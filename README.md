@@ -14,8 +14,7 @@ Detailed Explanation
 Let's delve into the various components of the script to understand how each part contributes to the overall functionality.
 
 1. Imports and Dependencies
-python
-Copy code
+
 import os
 import json
 import pandas as pd
@@ -40,12 +39,9 @@ pandas: Structures data for model predictions.
 watchdog: Monitors the filesystem for new JSON files.
 Ensure all third-party libraries are installed using pip:
 
-bash
-Copy code
 pip install watchdog pandas scikit-learn
 2. Loading the Pre-Trained Model
-python
-Copy code
+
 # ------------------------------
 # Load the Trained Model
 # ------------------------------
@@ -64,16 +60,14 @@ Error Handling:
 FileNotFoundError: Alerts if the model file is missing and exits the script.
 Generic Exception: Catches any other unexpected errors during model loading and exits gracefully.
 3. Creating a Thread-Safe Queue
-python
-Copy code
+
 # ------------------------------
 # Create a Queue for Thread-Safe GUI Updates
 # ------------------------------
 gui_queue = queue.Queue()
 Purpose: Establishes a queue to safely pass prediction results from background processing threads to the main GUI thread, ensuring thread safety.
 4. GUI Update Function
-python
-Copy code
+
 # ------------------------------
 # GUI Update Function
 # ------------------------------
@@ -92,8 +86,7 @@ Parameters:
 heart_rate: The predicted heart rate.
 breath_rate: The predicted breath rate.
 5. Processing JSON Files with Retries and Delay
-python
-Copy code
+
 # ------------------------------
 # Function to Process JSON File with Retries and Delay
 # ------------------------------
@@ -188,8 +181,7 @@ Prediction: Uses the loaded model to make predictions.
 Queueing Results: Places the prediction results into the gui_queue for the GUI to update.
 Error Handling: Catches and logs errors, retries processing if applicable, and skips the file after maximum retries.
 6. Event Handler for New Files
-python
-Copy code
+
 # ------------------------------
 # Event Handler for New Files
 # ------------------------------
@@ -223,8 +215,7 @@ processed_files Set: Keeps track of files that have already been processed to pr
 lock: Ensures thread-safe access to the processed_files set.
 on_created Method: Triggered when a new file is created. It checks if the file is a JSON file and hasn't been processed before, then starts a new thread to process it.
 7. Starting the Watchdog Observer
-python
-Copy code
+
 # ------------------------------
 # Function to Start the Watchdog Observer
 # ------------------------------
@@ -265,8 +256,7 @@ Event Handler and Observer Initialization: Connects the custom NewFileHandler to
 Recursive Monitoring: Enables monitoring of all subdirectories within the specified directory.
 Observer Lifecycle: Starts the observer and keeps it running until a keyboard interrupt (Ctrl+C) is detected, at which point it stops gracefully.
 8. Processing the GUI Queue
-python
-Copy code
+
 # ------------------------------
 # Function to Periodically Check the Queue and Update the GUI
 # ------------------------------
@@ -287,8 +277,7 @@ Mechanism:
 Non-Blocking: Uses a try-except block to attempt to retrieve items from the queue without blocking if the queue is empty.
 Scheduled Checks: Utilizes Tkinter's after method to schedule the next queue check every 100 milliseconds, ensuring timely GUI updates.
 9. GUI Setup
-python
-Copy code
+
 # ------------------------------
 # GUI Setup
 # ------------------------------
