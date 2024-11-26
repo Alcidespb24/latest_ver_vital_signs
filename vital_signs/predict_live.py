@@ -1,3 +1,5 @@
+# predict_live.py
+
 import os
 import json
 import pandas as pd
@@ -32,30 +34,22 @@ gui_queue = queue.Queue()
 # ------------------------------
 # GUI Update Function
 # ------------------------------
-def update_vital_signs_in_gui(heart_rate, breath_rate):
-    heart_rate_var.set(f"Heart Rate: {heart_rate:.2f} bpm")
+def update_vital_signs_in_gui(predicted_heart_rate, visualizer_heart_rate, breath_rate):
+    predicted_heart_rate_var.set(f"Predicted Heart Rate: {predicted_heart_rate:.2f} bpm")
+    visualizer_heart_rate_var.set(f"Visualizer Heart Rate: {visualizer_heart_rate:.2f} bpm")
     breath_rate_var.set(f"Breath Rate: {breath_rate:.2f} breaths/min")
+    difference = abs(predicted_heart_rate - visualizer_heart_rate)
+    difference_var.set(f"Difference: {difference:.2f} bpm")
 
 # ------------------------------
 # Function to Process JSON File with Retries and Delay
 # ------------------------------
 def process_json_file(json_file_path, retries=3, delay=10):
-    """
-    Processes a JSON file to extract vitals and make predictions using the trained model.
-
-    Args:
-        json_file_path (str): Path to the JSON file.
-        retries (int): Number of retry attempts if processing fails.
-        delay (int): Delay in seconds between retry attempts.
-    """
     for attempt in range(1, retries + 1):
         try:
             print(f"Attempt {attempt} - Processing file: {json_file_path}")
-            
-            # Wait for the specified delay to ensure file writing is complete
-            time.sleep(delay)
+            time.sleep(delay)  # Ensure the file write operation is complete
 
-            # Check if file is not empty
             if os.path.getsize(json_file_path) == 0:
                 raise ValueError("File is empty.")
 
@@ -71,10 +65,7 @@ def process_json_file(json_file_path, retries=3, delay=10):
                     breath_waveform = vitals.get("breathWaveform", [])
 
                     # Prepare a dictionary for prediction
-                    vitals_dict = {
-                        "heartRate": vitals.get("heartRate"),
-                        "breathRate": vitals.get("breathRate")
-                    }
+                    vitals_dict = {}
 
                     # Flatten waveform values into features
                     for i, value in enumerate(heart_waveform):
@@ -85,24 +76,26 @@ def process_json_file(json_file_path, retries=3, delay=10):
                     # Ensure all required features are present
                     for col in model.feature_names_in_:
                         if col not in vitals_dict:
-                            vitals_dict[col] = 0.0  # Fill missing features with zero or appropriate value
+                            vitals_dict[col] = 0.0
 
                     # Create DataFrame with the necessary columns for the model
                     df = pd.DataFrame([vitals_dict])
                     df = df[model.feature_names_in_]
 
                     # Make prediction
-                    predictions = model.predict(df)
+                    predicted_heart_rate = model.predict(df)[0]
 
-                    # Get breath rate value, handle None
+                    # Get visualizer's own heart rate reading
+                    visualizer_heart_rate = vitals.get("heartRate", 0.0)
+
+                    # Get breath rate value
                     breath_rate_value = vitals.get("breathRate", 0.0)
 
                     # Put the results in the queue
-                    gui_queue.put((predictions[0], breath_rate_value))
+                    gui_queue.put((predicted_heart_rate, visualizer_heart_rate, breath_rate_value))
 
-            # If processing is successful, exit the loop
             print(f"Successfully processed {json_file_path}")
-            break  # Exit the retry loop
+            break
 
         except (JSONDecodeError, ValueError) as e:
             print(f"Attempt {attempt} - Error processing {json_file_path}: {e}")
@@ -113,7 +106,7 @@ def process_json_file(json_file_path, retries=3, delay=10):
         except Exception as e:
             print(f"Unexpected error processing {json_file_path}: {e}")
             print(f"Skipping file: {json_file_path}")
-            break  # Exit on unexpected errors
+            break
 
 # ------------------------------
 # Event Handler for New Files
@@ -125,20 +118,17 @@ class NewFileHandler(FileSystemEventHandler):
         self.lock = threading.Lock()
 
     def on_created(self, event):
-        # Process only files, not directories
         if not event.is_directory and event.src_path.endswith('.json'):
             with self.lock:
                 if event.src_path not in self.processed_files:
                     self.processed_files.add(event.src_path)
                     print(f"Detected new JSON file: {event.src_path}")
-                    # Start a new thread to process the file to avoid blocking
                     threading.Thread(target=process_json_file, args=(event.src_path,), daemon=True).start()
 
 # ------------------------------
 # Function to Start the Watchdog Observer
 # ------------------------------
 def start_observer():
-    # Path to your binData directory
     live_data_directory = r'C:\ti\radar_toolbox_2_20_00_05\tools\visualizers\Applications_Visualizer\Industrial_Visualizer\binData'
     if not os.path.exists(live_data_directory):
         print(f"Error: Directory '{live_data_directory}' does not exist.")
@@ -146,13 +136,12 @@ def start_observer():
 
     event_handler = NewFileHandler()
     observer = Observer()
-    # Set recursive=True to monitor all subdirectories
     observer.schedule(event_handler, live_data_directory, recursive=True)
     observer.start()
     print(f"Started monitoring directory: {live_data_directory}")
     try:
         while True:
-            time.sleep(1)  # Keep the thread running
+            time.sleep(1)
     except KeyboardInterrupt:
         observer.stop()
     observer.join()
@@ -163,11 +152,11 @@ def start_observer():
 def process_gui_queue():
     try:
         while True:
-            heart_rate, breath_rate = gui_queue.get_nowait()
-            update_vital_signs_in_gui(heart_rate, breath_rate)
+            predicted_heart_rate, visualizer_heart_rate, breath_rate = gui_queue.get_nowait()
+            update_vital_signs_in_gui(predicted_heart_rate, visualizer_heart_rate, breath_rate)
     except queue.Empty:
         pass
-    root.after(100, process_gui_queue)  # Check the queue every 100 ms
+    root.after(100, process_gui_queue)
 
 # ------------------------------
 # GUI Setup
@@ -176,15 +165,23 @@ root = tk.Tk()
 root.title("Vital Sign Monitor")
 
 # Initialize StringVars with default values
-heart_rate_var = tk.StringVar(value="Heart Rate: -- bpm")
+predicted_heart_rate_var = tk.StringVar(value="Predicted Heart Rate: -- bpm")
+visualizer_heart_rate_var = tk.StringVar(value="Visualizer Heart Rate: -- bpm")
 breath_rate_var = tk.StringVar(value="Breath Rate: -- breaths/min")
+difference_var = tk.StringVar(value="Difference: -- bpm")
 
-# Create labels for heart rate and breath rate
-heart_rate_label = tk.Label(root, textvariable=heart_rate_var, font=("Helvetica", 16))
-heart_rate_label.pack(pady=10)
+# Create labels
+predicted_label = tk.Label(root, textvariable=predicted_heart_rate_var, font=("Helvetica", 16))
+predicted_label.pack(pady=5)
 
-breath_rate_label = tk.Label(root, textvariable=breath_rate_var, font=("Helvetica", 16))
-breath_rate_label.pack(pady=10)
+visualizer_label = tk.Label(root, textvariable=visualizer_heart_rate_var, font=("Helvetica", 16))
+visualizer_label.pack(pady=5)
+
+difference_label = tk.Label(root, textvariable=difference_var, font=("Helvetica", 16))
+difference_label.pack(pady=5)
+
+breath_label = tk.Label(root, textvariable=breath_rate_var, font=("Helvetica", 16))
+breath_label.pack(pady=5)
 
 # Start the file watching in a separate thread
 observer_thread = threading.Thread(target=start_observer, daemon=True)
